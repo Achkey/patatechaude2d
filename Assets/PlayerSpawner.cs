@@ -2,9 +2,11 @@ using UnityEngine;
 
 public class PlayerSpawner : MonoBehaviour
 {
-    public GameObject playerPrefab; // Prefab of the player
+    public GameObject playerPrefab; // Prefab for the player
     public int numberOfPlayers = 4; // Number of players to spawn
-    public float spawnRadius = 5f; // Radius within which players will spawn
+    public Vector2 spawnAreaMin = new Vector2(-8f, -4.5f); // Bottom-left corner of the spawn area
+    public Vector2 spawnAreaMax = new Vector2(8f, 4.5f);   // Top-right corner of the spawn area
+    public float minimumDistanceBetweenPlayers = 1.5f; // Minimum distance between players to avoid overlap
 
     void Start()
     {
@@ -13,19 +15,54 @@ public class PlayerSpawner : MonoBehaviour
 
     private void SpawnPlayers()
     {
+        Vector2[] spawnPositions = new Vector2[numberOfPlayers];
+
         for (int i = 0; i < numberOfPlayers; i++)
         {
-            // Generate a random position within the spawn radius
-            Vector2 randomPosition = (Vector2)transform.position + Random.insideUnitCircle * spawnRadius;
+            Vector2 spawnPosition;
+            int attempts = 0;
 
-            // Spawn a player at the random position
-            GameObject playerObject = Instantiate(playerPrefab, randomPosition, Quaternion.identity);
+            do
+            {
+                // Generate a random position within the spawn area
+                spawnPosition = new Vector2(
+                    Random.Range(spawnAreaMin.x, spawnAreaMax.x),
+                    Random.Range(spawnAreaMin.y, spawnAreaMax.y)
+                );
 
-            // Assign the player an ID and configure the PlayerController
-            PlayerController playerController = playerObject.GetComponent<PlayerController>();
+                attempts++;
+
+                // Limit attempts to prevent infinite loops in small spaces
+                if (attempts > 100)
+                {
+                    Debug.LogError("Could not find a valid spawn position for all players!");
+                    break;
+                }
+            }
+            while (!IsPositionValid(spawnPosition, spawnPositions, i));
+
+            spawnPositions[i] = spawnPosition;
+
+            // Spawn the player
+            GameObject player = Instantiate(playerPrefab, spawnPosition, Quaternion.identity);
+
+            // Assign a unique ID to the player
+            PlayerController playerController = player.GetComponent<PlayerController>();
             playerController.playerID = i + 1;
 
-            Debug.Log($"Player {playerController.playerID} spawned at {randomPosition}");
+            Debug.Log($"Player {playerController.playerID} spawned at {spawnPosition}");
         }
+    }
+
+    private bool IsPositionValid(Vector2 position, Vector2[] existingPositions, int count)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            if (Vector2.Distance(position, existingPositions[i]) < minimumDistanceBetweenPlayers)
+            {
+                return false; // Position is too close to an existing player
+            }
+        }
+        return true;
     }
 }
