@@ -31,15 +31,15 @@ public class GameManager : MonoBehaviour
 
         if (players.Length == 0)
         {
-            Debug.LogError("No players found in the scene!");
+            Debug.LogError("NO PLAYERS");
             return;
         }
 
-        // Select a random player to hold the bomb
+        // Random bomb holder
         int randomIndex = Random.Range(0, players.Length);
         PlayerController randomPlayer = players[randomIndex];
 
-        // Create the bomb if it doesn't exist
+        // creation de la bomb again if doesn't exist
         if (bombInstance == null)
         {
             GameObject bombObject = Instantiate(bombPrefab, randomPlayer.transform.position, Quaternion.identity);
@@ -50,7 +50,7 @@ public class GameManager : MonoBehaviour
         randomPlayer.hasBomb = true;
         bombInstance.currentHolder = randomPlayer;
 
-        Debug.Log($"Bomb assigned to Player {randomPlayer.playerID}");
+        Debug.Log($"Bomb: {randomPlayer.playerID}");
     }
 
     public void UpdateBombHolder(PlayerController newHolder)
@@ -58,7 +58,7 @@ public class GameManager : MonoBehaviour
         if (bombInstance != null)
         {
             bombInstance.currentHolder = newHolder; // Update the bomb's holder
-            Debug.Log($"Bomb is now held by Player {newHolder.playerID}");
+            Debug.Log($"New player qui a bomb: {newHolder.playerID}");
         }
     }
 }

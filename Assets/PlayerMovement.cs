@@ -2,8 +2,8 @@ using UnityEngine;
 
 public class PlayerMovement : MonoBehaviour
 {
-    public float speed = 5f; // Vitesse de déplacement
-    private PlayerController playerController; // Référence au contrôleur du joueur
+    public float speed = 5f; // Speed
+    private PlayerController playerController; // Player controller
 
     void Start()
     {

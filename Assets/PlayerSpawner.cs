@@ -24,7 +24,7 @@ public class PlayerSpawner : MonoBehaviour
 
             do
             {
-                // Generate a random position within the spawn area
+                // Random x y
                 spawnPosition = new Vector2(
                     Random.Range(spawnAreaMin.x, spawnAreaMax.x),
                     Random.Range(spawnAreaMin.y, spawnAreaMax.y)
@@ -32,7 +32,7 @@ public class PlayerSpawner : MonoBehaviour
 
                 attempts++;
 
-                // Limit attempts to prevent infinite loops in small spaces
+                // prevent loops
                 if (attempts > 100)
                 {
                     Debug.LogError("Could not find a valid spawn position for all players!");
@@ -43,10 +43,10 @@ public class PlayerSpawner : MonoBehaviour
 
             spawnPositions[i] = spawnPosition;
 
-            // Spawn the player
+            // SPAWN
             GameObject player = Instantiate(playerPrefab, spawnPosition, Quaternion.identity);
 
-            // Assign a unique ID to the player
+            // ID player unique
             PlayerController playerController = player.GetComponent<PlayerController>();
             playerController.playerID = i + 1;
 
@@ -60,7 +60,7 @@ public class PlayerSpawner : MonoBehaviour
         {
             if (Vector2.Distance(position, existingPositions[i]) < minimumDistanceBetweenPlayers)
             {
-                return false; // Position is too close to an existing player
+                return false; // so close
             }
         }
         return true;

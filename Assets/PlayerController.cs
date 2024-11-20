@@ -2,9 +2,9 @@ using UnityEngine;
 
 public class PlayerController : MonoBehaviour
 {
-    public int playerID; // Unique identifier for the player
-    public float moveSpeed = 5f; // Movement speed
-    public bool hasBomb = false; // Whether this player currently holds the bomb
+    public int playerID; // ID unique
+    public float moveSpeed = 5f; // Speed
+    public bool hasBomb = false; // a la bomb?
 
     private Rigidbody2D rb;
 
@@ -15,13 +15,13 @@ public class PlayerController : MonoBehaviour
 
 void Update()
 {
-    // Movement logic
+    // Mouvement
     float horizontal = Input.GetAxis("Horizontal" + playerID);
     float vertical = Input.GetAxis("Vertical" + playerID);
     Vector2 movement = new Vector2(horizontal, vertical);
     rb.velocity = movement * moveSpeed;
 
-    // Clamp player's position to stay within boundary
+    // can't leave boundary
     BoxCollider2D boundary = GameObject.Find("Boundary").GetComponent<BoxCollider2D>();
     if (boundary != null)
     {

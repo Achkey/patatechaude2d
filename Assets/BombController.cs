@@ -2,11 +2,11 @@ using UnityEngine;
 
 public class BombController : MonoBehaviour
 {
-    public PlayerController currentHolder; // Player currently holding the bomb
+    public PlayerController currentHolder; // Joueur qui a BOMB
 
     void Update()
     {
-        // Make the bomb follow the current holder's position
+        // Bomb stick au joueur
         if (currentHolder != null)
         {
             transform.position = currentHolder.transform.position;
