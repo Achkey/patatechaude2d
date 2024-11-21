@@ -1,12 +1,12 @@
-Nothing yet.
+## Nothing yet.
 
-> Working on it
+Working on it
 
-WITH: 
+## WITH: 
 
--> [@achkey]( https://github.com/Achkey )
--> [@Jylt-wNz]( https://github.com/Jylt-wNz )
--> [@Steven]( https://github.com/Yvelchrome )
+- [@achkey]( https://github.com/Achkey )
+- [@Jylt-wNz]( https://github.com/Jylt-wNz )
+- [@Steven]( https://github.com/Yvelchrome )
 
 Built in: Unity.
 Project: HETIC.
