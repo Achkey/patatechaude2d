@@ -19,7 +19,7 @@ void Update()
     float horizontal = Input.GetAxis("Horizontal" + playerID);
     float vertical = Input.GetAxis("Vertical" + playerID);
     Vector2 movement = new Vector2(horizontal, vertical);
-    rb.velocity = movement * moveSpeed;
+    rb.linearVelocity = movement * moveSpeed;
 
     // can't leave boundary
     BoxCollider2D boundary = GameObject.Find("Boundary").GetComponent<BoxCollider2D>();
