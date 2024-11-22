@@ -1,50 +1,70 @@
-using UnityEngine;
 using System.Net;
 using System.Net.Sockets;
+using System.Text;
+using System.Collections.Generic;
 using System.Threading;
+using UnityEngine;
 
 public class Server : MonoBehaviour
 {
+    public static Server Instance;
+
     private TcpListener server;
-    private bool isRunning;
+    private List<TcpClient> clients = new List<TcpClient>();
 
-    void Start()
+    public bool isHost; // True si cet ordinateur est l'hôte
+    public string hostIP = "127.0.0.1"; // IP de l'hôte
+    public int port = 7777;
+
+    private void Awake()
     {
-        StartServer(7777); // Démarre le serveur sur le port 7777
+        if (Instance == null) Instance = this;
+        else Destroy(gameObject);
     }
 
-    public void StartServer(int port)
+    private void Start()
     {
-        server = new TcpListener(IPAddress.Any, port);
-        server.Start();
-        isRunning = true;
-
-        Debug.Log($"Server started on port {port}.");
-
-        Thread thread = new Thread(ListenForClients);
-        thread.Start();
-    }
-
-    private void ListenForClients()
-    {
-        while (isRunning)
+        if (isHost)
         {
-            try
-            {
-                TcpClient client = server.AcceptTcpClient();
-                Debug.Log("New client connected!");
-
-                Thread thread = new Thread(() => HandleClient(client));
-                thread.Start();
-            }
-            catch (System.Exception ex)
-            {
-                Debug.LogError($"Error accepting client: {ex.Message}");
-            }
+            StartServer();
+        }
+        else
+        {
+            ConnectToHost();
         }
     }
 
-    private void HandleClient(TcpClient client)
+    void StartServer()
+    {
+        server = new TcpListener(IPAddress.Any, port);
+        server.Start();
+        Debug.Log("Server started!");
+
+        // Lancer un thread pour accepter les connexions
+        Thread serverThread = new Thread(AcceptClients);
+        serverThread.IsBackground = true;
+        serverThread.Start();
+    }
+
+    void AcceptClients()
+    {
+        while (true)
+        {
+            TcpClient client = server.AcceptTcpClient(); // Bloque jusqu'à ce qu'un client se connecte
+            lock (clients)
+            {
+                clients.Add(client);
+            }
+            Debug.Log("Client connected!");
+
+            // Lancer un thread pour gérer les communications avec ce client
+            Thread clientThread = new Thread(() => HandleClient(client));
+            clientThread.IsBackground = true;
+            clientThread.Start();
+        }
+    }
+
+    void HandleClient(TcpClient client)
     {
         NetworkStream stream = client.GetStream();
         byte[] buffer = new byte[1024];
@@ -52,18 +72,39 @@ public class Server : MonoBehaviour
 
         while ((bytesRead = stream.Read(buffer, 0, buffer.Length)) != 0)
         {
-            string message = System.Text.Encoding.ASCII.GetString(buffer, 0, bytesRead);
+            string message = Encoding.UTF8.GetString(buffer, 0, bytesRead);
             Debug.Log($"Received: {message}");
+
+            // Echo back the message
+            byte[] response = Encoding.UTF8.GetBytes("Server received: " + message);
+            stream.Write(response, 0, response.Length);
         }
 
-        Debug.Log("Client disconnected.");
+        lock (clients)
+        {
+            clients.Remove(client);
+        }
+
         client.Close();
+        Debug.Log("Client disconnected!");
     }
 
-    public void StopServer()
+    public void ConnectToHost()
     {
-        isRunning = false;
-        server.Stop();
-        Debug.Log("Server stopped.");
+        TcpClient client = new TcpClient();
+        client.Connect(hostIP, port);
+        Debug.Log("Connected to host!");
+    }
+
+    public void SendBroadcastMessage(string message)
+    {
+        byte[] data = Encoding.UTF8.GetBytes(message);
+        lock (clients)
+        {
+            foreach (var client in clients)
+            {
+                client.GetStream().Write(data, 0, data.Length);
+            }
+        }
     }
 }

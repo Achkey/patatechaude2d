@@ -1,61 +1,60 @@
-using System;
-using System.Net;
+using UnityEngine;
 using System.Net.Sockets;
 using System.Text;
-using UnityEngine;
 
 public class Client : MonoBehaviour
 {
-    private TcpClient tcpClient;
-    private UdpClient udpClient;
-    private NetworkStream stream;
-    private string serverIP = "172.20.10.1";
-    private int port = 7777;
+    private TcpClient client;
 
-    void Start()
+    private void Start()
     {
-        try
+        if (!Server.Instance.isHost)
         {
-            // Connect to TCP server
-            tcpClient = new TcpClient(serverIP, port);
-            stream = tcpClient.GetStream();
-            Debug.Log("Connected to TCP server!");
-
-            // Setup UDP client
-            udpClient = new UdpClient();
-            udpClient.Connect(serverIP, port);
-
-            // Example: Send a test message
-            SendTcpMessage("Hello, TCP Server!");
-            SendUdpMessage("Hello, UDP Server!");
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError("Client error: " + ex.Message);
+            client = new TcpClient();
+            try
+            {
+                client.Connect(Server.Instance.hostIP, Server.Instance.port);
+                Debug.Log("Client connected to server.");
+            }
+            catch (SocketException e)
+            {
+                Debug.LogError($"Failed to connect to server: {e.Message}");
+            }
         }
     }
 
-    public void SendTcpMessage(string message)
+    void Update()
     {
-        if (tcpClient.Connected)
+        if (client != null && client.Connected && client.Available > 0)
         {
-            byte[] data = Encoding.ASCII.GetBytes(message);
-            stream.Write(data, 0, data.Length);
-            Debug.Log("TCP message sent: " + message);
+            byte[] buffer = new byte[1024];
+            int bytesRead = client.GetStream().Read(buffer, 0, buffer.Length);
+
+            string message = Encoding.UTF8.GetString(buffer, 0, bytesRead);
+            if (message.StartsWith("MOVE"))
+            {
+                string positionData = message.Substring(5);
+
+                // Remplacement de FindObjectOfType
+                PlayerNetworkController playerController = Object.FindFirstObjectByType<PlayerNetworkController>();
+                if (playerController != null)
+                {
+                    playerController.ApplyMovement(positionData);
+                }
+                else
+                {
+                    Debug.LogWarning("PlayerNetworkController not found.");
+                }
+            }
         }
     }
 
-    public void SendUdpMessage(string message)
+    private void OnApplicationQuit()
     {
-        byte[] data = Encoding.ASCII.GetBytes(message);
-        udpClient.Send(data, data.Length);
-        Debug.Log("UDP message sent: " + message);
-    }
-
-    void OnApplicationQuit()
-    {
-        stream?.Close();
-        tcpClient?.Close();
-        udpClient?.Close();
+        if (client != null && client.Connected)
+        {
+            client.Close();
+            Debug.Log("Client disconnected.");
+        }
     }
 }
