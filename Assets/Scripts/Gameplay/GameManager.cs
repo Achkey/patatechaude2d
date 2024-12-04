@@ -2,14 +2,13 @@ using UnityEngine;
 
 public class GameManager : MonoBehaviour
 {
-    public static GameManager Instance; // Singleton instance
+    public static GameManager Instance;
 
-    public GameObject bombPrefab; // Prefab of the bomb
-    private BombController bombInstance; // Instance of the bomb
+    private Client client;
+    private Server server;
 
-    void Awake()
+    private void Awake()
     {
-        // Ensure there's only one GameManager instance
         if (Instance == null)
         {
             Instance = this;
@@ -20,45 +19,32 @@ public class GameManager : MonoBehaviour
         }
     }
 
-    void Start()
+    private void Start()
     {
-        AssignBombToRandomPlayer(); // Assign the bomb at the start of the game
-    }
+        client = Object.FindFirstObjectByType<Client>();
+        server = Object.FindFirstObjectByType<Server>();
 
-    public void AssignBombToRandomPlayer()
-    {
-        PlayerController[] players = FindObjectsOfType<PlayerController>();
-
-        if (players.Length == 0)
+        if (server == null && client == null)
         {
-            Debug.LogError("NO PLAYERS");
-            return;
+            Debug.LogError("GameManager requires either a Client or Server script in the scene.");
         }
-
-        // Random bomb holder
-        int randomIndex = Random.Range(0, players.Length);
-        PlayerController randomPlayer = players[randomIndex];
-
-        // creation de la bomb again if doesn't exist
-        if (bombInstance == null)
-        {
-            GameObject bombObject = Instantiate(bombPrefab, randomPlayer.transform.position, Quaternion.identity);
-            bombInstance = bombObject.GetComponent<BombController>();
-        }
-
-        // Assign the bomb to the selected player
-        randomPlayer.hasBomb = true;
-        bombInstance.currentHolder = randomPlayer;
-
-        Debug.Log($"Bomb: {randomPlayer.playerID}");
     }
 
     public void UpdateBombHolder(PlayerController newHolder)
     {
-        if (bombInstance != null)
+        if (server != null)
         {
-            bombInstance.currentHolder = newHolder; // Update the bomb's holder
-            Debug.Log($"New player qui a bomb: {newHolder.playerID}");
+            BombController bombController = Object.FindFirstObjectByType<BombController>();
+            if (bombController != null)
+            {
+                bombController.SetBombHolder(newHolder);
+
+                server.BroadcastToAll($"BOMB_UPDATE:{newHolder.playerID}");
+            }
+        }
+        else if (client != null)
+        {
+            client.SendMessageToServer($"BOMB_HOLDER:{newHolder.playerID}");
         }
     }
 }

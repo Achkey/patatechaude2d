@@ -12,6 +12,7 @@ GameObject:
   - component: {fileID: 2218334437205496080}
   - component: {fileID: -6272542175119134378}
   - component: {fileID: 8394477883124027460}
+  - component: {fileID: 2230700860357911078}
   m_Layer: 0
   m_Name: Bomb
   m_TagString: Untagged
@@ -101,7 +102,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 26abe8afae39cae4b95c829e27765670, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  currentHolder: {fileID: 0}
+  ShowTopMostFoldoutHeaderGroup: 1
+  currentHolderId:
+    m_InternalValue: 0
 --- !u!68 &8394477883124027460
 EdgeCollider2D:
   m_ObjectHideFlags: 0
@@ -145,3 +148,28 @@ EdgeCollider2D:
   m_AdjacentEndPoint: {x: 0, y: 0}
   m_UseAdjacentStartPoint: 0
   m_UseAdjacentEndPoint: 0
+--- !u!114 &2230700860357911078
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 153917385978014273}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  GlobalObjectIdHash: 0
+  InScenePlacedSourceGlobalObjectIdHash: 0
+  DeferredDespawnTick: 0
+  Ownership: 1
+  AlwaysReplicateAsRoot: 0
+  SynchronizeTransform: 1
+  ActiveSceneSynchronization: 0
+  SceneMigrationSynchronization: 1
+  SpawnWithObservers: 1
+  DontDestroyWithOwner: 0
+  AutoObjectParentSync: 1
+  SyncOwnerTransformWhenParented: 1
+  AllowOwnerToParent: 0

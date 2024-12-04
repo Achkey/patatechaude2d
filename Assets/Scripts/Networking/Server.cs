@@ -1,9 +1,10 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Collections;
 using System.Collections.Generic;
-using System.Threading;
 using UnityEngine;
+using System.Threading;
 
 public class Server : MonoBehaviour
 {
@@ -11,10 +12,18 @@ public class Server : MonoBehaviour
 
     private TcpListener server;
     private List<TcpClient> clients = new List<TcpClient>();
+    private Dictionary<TcpClient, GameObject> connectedPlayers = new Dictionary<TcpClient, GameObject>();
 
-    public bool isHost; // True si cet ordinateur est l'hôte
-    public string hostIP = "127.0.0.1"; // IP de l'hôte
     public int port = 7777;
+    public GameObject playerPrefab;
+
+    private List<Vector2> spawnPositions = new List<Vector2>
+    {
+        new Vector2(-5, 0),
+        new Vector2(5, 0),
+        new Vector2(0, 5),
+        new Vector2(0, -5)
+    };
 
     private void Awake()
     {
@@ -24,87 +33,140 @@ public class Server : MonoBehaviour
 
     private void Start()
     {
-        if (isHost)
-        {
-            StartServer();
-        }
-        else
-        {
-            ConnectToHost();
-        }
+        StartServer();
     }
 
     void StartServer()
     {
-        server = new TcpListener(IPAddress.Any, port);
-        server.Start();
-        Debug.Log("Server started!");
+        try
+        {
+            if (server != null && server.Server.IsBound)
+            {
+                Debug.LogError("Server is already running!");
+                return;
+            }
 
-        // Lancer un thread pour accepter les connexions
-        Thread serverThread = new Thread(AcceptClients);
-        serverThread.IsBackground = true;
-        serverThread.Start();
+            server = new TcpListener(IPAddress.Any, port);
+            server.Start();
+            Debug.Log("Server started!");
+
+            System.Threading.Thread serverThread = new System.Threading.Thread(AcceptClients);
+            serverThread.IsBackground = true;
+            serverThread.Start();
+        }
+        catch (SocketException ex)
+        {
+            Debug.LogError($"Error starting server: {ex.Message}");
+        }
     }
+
 
     void AcceptClients()
     {
         while (true)
         {
-            TcpClient client = server.AcceptTcpClient(); // Bloque jusqu'à ce qu'un client se connecte
+            TcpClient client = server.AcceptTcpClient();
             lock (clients)
             {
                 clients.Add(client);
+                Debug.Log($"Client connected! Total clients: {clients.Count}");
+
+                StartCoroutine(AssignPlayerCoroutine(client));
             }
-            Debug.Log("Client connected!");
-
-            // Lancer un thread pour gérer les communications avec ce client
-            Thread clientThread = new Thread(() => HandleClient(client));
-            clientThread.IsBackground = true;
-            clientThread.Start();
         }
     }
 
-    void HandleClient(TcpClient client)
+    private IEnumerator AssignPlayerCoroutine(TcpClient client)
     {
-        NetworkStream stream = client.GetStream();
-        byte[] buffer = new byte[1024];
-        int bytesRead;
+        yield return null;
 
-        while ((bytesRead = stream.Read(buffer, 0, buffer.Length)) != 0)
-        {
-            string message = Encoding.UTF8.GetString(buffer, 0, bytesRead);
-            Debug.Log($"Received: {message}");
-
-            // Echo back the message
-            byte[] response = Encoding.UTF8.GetBytes("Server received: " + message);
-            stream.Write(response, 0, response.Length);
-        }
-
-        lock (clients)
-        {
-            clients.Remove(client);
-        }
-
-        client.Close();
-        Debug.Log("Client disconnected!");
+        AssignPlayer(client);
     }
 
-    public void ConnectToHost()
+    void AssignPlayer(TcpClient client)
     {
-        TcpClient client = new TcpClient();
-        client.Connect(hostIP, port);
-        Debug.Log("Connected to host!");
+        if (clients.Count <= spawnPositions.Count)
+        {
+        Debug.log("AssignPlayer | <=");
+            Vector2 spawnPosition = spawnPositions[clients.Count - 1];
+            SpawnPlayerForClient(client, spawnPosition);
+        }
+        else
+        {
+        Debug.log("AssignPlayer | more than array pos = random");
+            Vector2 spawnPosition = new Vector2(
+                Random.Range(-8f, 8f),
+                Random.Range(-4.5f, 4.5f)
+            );
+            SpawnPlayerForClient(client, spawnPosition);
+        }
     }
 
-    public void SendBroadcastMessage(string message)
+    void SpawnPlayerForClient(TcpClient client, Vector2 spawnPosition)
+    {
+        GameObject player = Instantiate(playerPrefab, spawnPosition, Quaternion.identity);
+        connectedPlayers[client] = player;
+
+        PlayerController playerController = player.GetComponent<PlayerController>();
+        if (playerController != null)
+        {
+            playerController.playerID = connectedPlayers.Count;
+        }
+
+        SendMessageToClient(client, $"SPAWN:{spawnPosition.x},{spawnPosition.y}");
+        BroadcastToAll($"PLAYER_JOINED:{connectedPlayers.Count}");
+    }
+
+    void HandleMessage(string message, TcpClient client)
+    {
+        if (message.StartsWith("BOMB_HOLDER"))
+        {
+            string[] data = message.Split(':');
+            int newHolderID = int.Parse(data[1]);
+
+            if (connectedPlayers.TryGetValue(client, out GameObject playerObject))
+            {
+                PlayerController newHolder = playerObject.GetComponent<PlayerController>();
+                if (newHolder != null)
+                {
+                    GameManager.Instance.UpdateBombHolder(newHolder);
+                    Debug.Log($"Bomb holder updated to Player {newHolderID}");
+                }
+            }
+        }
+    }
+
+
+    void SendMessageToClient(TcpClient client, string message)
     {
         byte[] data = Encoding.UTF8.GetBytes(message);
+        client.GetStream().Write(data, 0, data.Length);
+    }
+
+    public void BroadcastToAll(string message)
+    {
+        byte[] data = System.Text.Encoding.UTF8.GetBytes(message);
         lock (clients)
         {
             foreach (var client in clients)
             {
                 client.GetStream().Write(data, 0, data.Length);
             }
+        }
+    }
+
+
+    public bool IsServerReady()
+    {
+        return server != null && server.Connected;
+    }
+
+    private void OnApplicationQuit()
+    {
+        if (server != null)
+        {
+            server.Stop();
+            Debug.Log("Server stopped.");
         }
     }
 }

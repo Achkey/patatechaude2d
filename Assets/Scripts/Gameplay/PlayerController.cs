@@ -2,70 +2,94 @@ using UnityEngine;
 
 public class PlayerController : MonoBehaviour
 {
-    public int playerID; // ID unique
-    public float moveSpeed = 5f; // Speed
-    public bool hasBomb = false; // a la bomb?
+    public int playerID;
+    public float moveSpeed = 5f;
 
     private Rigidbody2D rb;
+    private BoxCollider2D boundary;
+
+    public bool hasBomb = false;
+
+    private Client client;
 
     void Start()
     {
         rb = GetComponent<Rigidbody2D>();
-    }
-
-void Update()
-{
-    // Mouvement
-    float horizontal = Input.GetAxis("Horizontal" + playerID);
-    float vertical = Input.GetAxis("Vertical" + playerID);
-    Vector2 movement = new Vector2(horizontal, vertical);
-    rb.linearVelocity = movement * moveSpeed;
-
-    // can't leave boundary
-    BoxCollider2D boundary = GameObject.Find("Boundary").GetComponent<BoxCollider2D>();
-    if (boundary != null)
-    {
-        Vector3 position = transform.position;
-        Vector2 boundsMin = boundary.bounds.min;
-        Vector2 boundsMax = boundary.bounds.max;
-
-        position.x = Mathf.Clamp(position.x, boundsMin.x, boundsMax.x);
-        position.y = Mathf.Clamp(position.y, boundsMin.y, boundsMax.y);
-
-        transform.position = position;
-    }
-}
-
-
-    private void OnCollisionEnter2D(Collision2D collision)
-    {
-        if (hasBomb)
+        boundary = GameObject.Find("Boundary")?.GetComponent<BoxCollider2D>();
+        if (boundary == null)
         {
-            PlayerController otherPlayer = collision.gameObject.GetComponent<PlayerController>();
-            if (otherPlayer != null && !otherPlayer.hasBomb)
-            {
-                PassBombTo(otherPlayer);
-            }
+            Debug.LogWarning("Boundary not found!");
         }
-        else
+
+        client = Object.FindFirstObjectByType<Client>();
+        if (client == null)
         {
-            PlayerController bombHolder = collision.gameObject.GetComponent<PlayerController>();
-            if (bombHolder != null && bombHolder.hasBomb)
-            {
-                bombHolder.PassBombTo(this);
-            }
+            Debug.LogError("Client script not found in the scene!");
         }
     }
 
-    public void PassBombTo(PlayerController targetPlayer)
+    void Update()
     {
-        if (targetPlayer == null) return;
+        if (client == null || client.playerPrefab != gameObject) return;
 
-        hasBomb = false;
-        targetPlayer.hasBomb = true;
+        HandleMovement();
+        ClampPositionWithinBoundary();
 
-        GameManager.Instance.UpdateBombHolder(targetPlayer);
+        if (Input.GetKeyDown(KeyCode.Space) && hasBomb)
+        {
+            AttemptToPassBomb();
+        }
+    }
 
-        Debug.Log($"Bomb passed from Player {playerID} to Player {targetPlayer.playerID}");
+    private void HandleMovement()
+    {
+        float horizontal = Input.GetAxis("Horizontal");
+        float vertical = Input.GetAxis("Vertical");
+        Vector2 movement = new Vector2(horizontal, vertical);
+
+        rb.velocity = movement * moveSpeed;
+
+        SendPositionToServer(transform.position);
+    }
+
+    private void ClampPositionWithinBoundary()
+    {
+        if (boundary != null)
+        {
+            Vector3 position = transform.position;
+            Vector2 boundsMin = boundary.bounds.min;
+            Vector2 boundsMax = boundary.bounds.max;
+
+            position.x = Mathf.Clamp(position.x, boundsMin.x, boundsMax.x);
+            position.y = Mathf.Clamp(position.y, boundsMin.y, boundsMax.y);
+
+            transform.position = position;
+        }
+    }
+
+    private void AttemptToPassBomb()
+    {
+        Debug.Log($"Player {playerID} is trying to pass the bomb!");
+
+        if (client != null)
+        {
+            string bombMessage = $"PASS_BOMB:{playerID}";
+            client.SendMessageToServer(bombMessage);
+        }
+    }
+
+    private void SendPositionToServer(Vector3 position)
+    {
+        if (client != null)
+        {
+            string positionMessage = $"POSITION_UPDATE:{playerID}:{position.x}:{position.y}";
+            client.SendMessageToServer(positionMessage);
+        }
+    }
+
+    public void UpdateBombStatus(bool newStatus)
+    {
+        hasBomb = newStatus;
+        Debug.Log($"Player {playerID} bomb status updated: {hasBomb}");
     }
 }

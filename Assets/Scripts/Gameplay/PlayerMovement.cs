@@ -2,29 +2,35 @@ using UnityEngine;
 
 public class PlayerMovement : MonoBehaviour
 {
-    public float speed = 5f; // Speed
-    private PlayerController playerController; // Player controller
+    public float speed = 5f;
+    private Client client;
 
     void Start()
     {
-        playerController = GetComponent<PlayerController>();
+        client = Object.FindObjectOfType<Client>();
+        if (client == null)
+        {
+            Debug.LogError("Client script not found in the scene!");
+        }
     }
 
     void Update()
     {
-        Vector3 movement = Vector3.zero;
+        HandleMovement();
+        SendPositionToServer();
+    }
 
-        // Contrôles personnalisés en fonction du joueur
-        if (playerController.playerID == 1) // Joueur 1
-        {
-            movement = new Vector3(Input.GetAxis("Horizontal"), Input.GetAxis("Vertical"), 0);
-        }
-        else if (playerController.playerID == 2) // Joueur 2
-        {
-            movement = new Vector3(Input.GetAxis("Horizontal2"), Input.GetAxis("Vertical2"), 0);
-        }
+    private void HandleMovement()
+    {
+        Vector3 movement = new Vector3(Input.GetAxis("Horizontal"), Input.GetAxis("Vertical"), 0);
+        transform.Translate(movement * speed * Time.deltaTime);
+    }
 
-        // Appliquer le mouvement
-        transform.position += movement.normalized * speed * Time.deltaTime;
+    private void SendPositionToServer()
+    {
+        if (client != null)
+        {
+            client.SendMessageToServer($"POSITION:{transform.position.x},{transform.position.y}");
+        }
     }
 }
