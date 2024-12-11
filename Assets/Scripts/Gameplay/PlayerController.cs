@@ -3,35 +3,41 @@ using UnityEngine;
 public class PlayerController : MonoBehaviour
 {
     public int playerID;
-    public float moveSpeed = 5f;
+    public float moveSpeed = 10f;
 
-    private Rigidbody2D rb;
+    private Rigidbody2D rigidBody;
     private BoxCollider2D boundary;
 
     public bool hasBomb = false;
 
+    private Server server;
     private Client client;
 
     void Start()
     {
-        rb = GetComponent<Rigidbody2D>();
+        rigidBody = GetComponent<Rigidbody2D>();
         boundary = GameObject.Find("Boundary")?.GetComponent<BoxCollider2D>();
+
         if (boundary == null)
         {
             Debug.LogWarning("Boundary not found!");
         }
 
-        client = Object.FindFirstObjectByType<Client>();
+        client = UnityEngine.Object.FindFirstObjectByType<Client>();
         if (client == null)
         {
             Debug.LogError("Client script not found in the scene!");
+        }
+
+        server = UnityEngine.Object.FindFirstObjectByType<Server>();
+        if (server == null)
+        {
+            Debug.LogError("Server script not found in the scene!");
         }
     }
 
     void Update()
     {
-        if (client == null || client.playerPrefab != gameObject) return;
-
         HandleMovement();
         ClampPositionWithinBoundary();
 
@@ -47,16 +53,14 @@ public class PlayerController : MonoBehaviour
         float vertical = Input.GetAxis("Vertical");
         Vector2 movement = new Vector2(horizontal, vertical);
 
-        rb.velocity = movement * moveSpeed;
-
-        SendPositionToServer(transform.position);
+        rigidBody.linearVelocity = movement * moveSpeed;
     }
 
     private void ClampPositionWithinBoundary()
     {
         if (boundary != null)
         {
-            Vector3 position = transform.position;
+            Vector2 position = transform.position;
             Vector2 boundsMin = boundary.bounds.min;
             Vector2 boundsMax = boundary.bounds.max;
 
@@ -64,6 +68,8 @@ public class PlayerController : MonoBehaviour
             position.y = Mathf.Clamp(position.y, boundsMin.y, boundsMax.y);
 
             transform.position = position;
+        
+            // server.UpdatePlayerPosition(playerID, new Vector2(position.x, position.y));
         }
     }
 
@@ -75,15 +81,6 @@ public class PlayerController : MonoBehaviour
         {
             string bombMessage = $"PASS_BOMB:{playerID}";
             client.SendMessageToServer(bombMessage);
-        }
-    }
-
-    private void SendPositionToServer(Vector3 position)
-    {
-        if (client != null)
-        {
-            string positionMessage = $"POSITION_UPDATE:{playerID}:{position.x}:{position.y}";
-            client.SendMessageToServer(positionMessage);
         }
     }
 

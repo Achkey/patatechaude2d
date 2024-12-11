@@ -1,103 +1,213 @@
+using System;
+using System.Collections;
+using System.Collections.Concurrent;
 using System.Net.Sockets;
 using System.Text;
 using UnityEngine;
-using System.Collections;
 
 public class Client : MonoBehaviour
 {
-    private TcpClient client;
+    private Server server;
+    private TcpClient tcpClient;
+    private NetworkStream stream;
+    private byte[] buffer = new byte[1024];
+    private bool isConnected = false;
+
+    private ConcurrentQueue<System.Action> mainThreadActions = new ConcurrentQueue<System.Action>();
+
     public string serverAddress = "127.0.0.1";
     public int port = 7777;
-    private bool isConnected = false;
 
     public GameObject playerPrefab;
 
     private void Start()
     {
-        StartCoroutine(ConnectToServerWithRetry());
+        server = UnityEngine.Object.FindAnyObjectByType<Server>();
+        
+        StartCoroutine(ConnectToServer(serverAddress, port));
     }
 
-    private IEnumerator ConnectToServerWithRetry()
+    private void Update()
     {
-        while (!isConnected)
+        int actionsProcessed = 0;
+
+        while (mainThreadActions.Count > 0  && actionsProcessed < 10)
         {
-            if (Server.Instance != null && Server.Instance.IsServerReady())
+            if (mainThreadActions.TryDequeue(out var action))
             {
-                ConnectToServer(serverAddress, port);
+                action.Invoke();
+            }
+            actionsProcessed++;
+        }
+    }
+    
+    private void OnApplicationQuit()
+    {
+        Disconnect();
+    }
+
+
+    private void OnMessageReceived(IAsyncResult ar)
+    {
+        try
+        {
+            int bytesRead = stream.EndRead(ar);
+            if (bytesRead > 0)
+            {
+                string message = Encoding.UTF8.GetString(buffer, 0, bytesRead);
+                HandleMessage(message);
+
+                stream.BeginRead(buffer, 0, buffer.Length, OnMessageReceived, null);
             }
             else
             {
-                Debug.Log("Waiting for server to be ready...");
+                Debug.LogWarning("Disconnected from server.");
+                Disconnect();
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"Error reading from server: {ex.Message}");
+            Disconnect();
+        }
+    }
+
+    void HandleMessage(string message)
+    {
+        string[] messages = message.Split('\n');
+        foreach (string msg in messages)
+        {
+            if (string.IsNullOrEmpty(msg)) continue;
+            
+            if (msg.StartsWith("SPAWN"))
+            {
+                Debug.Log($"You have been spawned: {msg.Substring(6)}");
+
+                string[] data = msg.Substring(6).Split(':');
+                int playerID = int.Parse(data[0]);
+
+                string[] positionData = data[1].Split(',');
+                float x = float.Parse(positionData[0]);
+                float y = float.Parse(positionData[1]);
+                
+                mainThreadActions.Enqueue(() => InstantiatePlayerOnClient(playerID, new Vector2(x, y)));
+            }
+            else if (msg.StartsWith("PLAYER_JOINED"))
+            {
+                Debug.Log($"New player joined: {msg.Substring(14)}");
+                
+                string[] data = msg.Substring(14).Split(':');
+                int playerID = int.Parse(data[0]);
+
+                string[] positionData = data[1].Split(',');
+                float x = float.Parse(positionData[0]);
+                float y = float.Parse(positionData[1]);
+
+                mainThreadActions.Enqueue(() => InstantiatePlayerOnClient(playerID, new Vector2(x, y)));
+            }
+            else if (msg.StartsWith("PLAYER_POSITION"))
+            {
+                Debug.Log($"Player position update: {msg.Substring(16)}");
+
+                string[] data = msg.Substring(16).Split(':');
+                int playerID = int.Parse(data[0]);
+
+                string[] positionData = data[1].Split(',');
+                float x = float.Parse(positionData[0]);
+                float y = float.Parse(positionData[1]);
+
+                // mainThreadActions.Enqueue(() => UpdatePlayerPosition(playerID, new Vector2(x, y)));
+            }
+            else {
+                Debug.Log($"Message received: {msg}");
+            }
+        }
+    }
+    
+    public void SendMessageToServer(string message)
+    {
+        try
+        {
+            if (isConnected && stream != null)
+            {
+                byte[] data = Encoding.UTF8.GetBytes(message);
+                stream.Write(data, 0, data.Length);
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"Error sending message: {ex.Message}");
+        }
+    }
+
+    void InstantiatePlayerOnClient(int playerID, Vector2 position)
+    {
+        GameObject player = Instantiate(playerPrefab, position, Quaternion.identity);
+        PlayerController playerController = player.GetComponent<PlayerController>();
+        if (playerController != null)
+        {
+            playerController.playerID = playerID;
+        }
+    }
+    
+    // void UpdatePlayerPosition(int playerID, Vector2 newPosition)
+    // {
+    //     PlayerController[] players = FindObjectsOfType<PlayerController>();
+    //     foreach (var player in players)
+    //     {
+    //         if (player.playerID == playerID)
+    //         {
+    //             player.transform.position = newPosition;
+    //             break;
+    //         }
+    //     }
+    // }
+
+    private IEnumerator ConnectToServer(string address, int port)
+    {
+        while (!isConnected)
+        {
+            try
+            {
+                if (tcpClient != null && tcpClient.Connected)
+                {
+                    Debug.Log("Already connected.");
+                    yield break;
+                }
+
+                tcpClient = new TcpClient();
+                tcpClient.Connect(address, port);
+                stream = tcpClient.GetStream();
+                isConnected = true;
+                Debug.Log("Connected to server!");
+
+                stream.BeginRead(buffer, 0, buffer.Length, OnMessageReceived, null);
+                yield break;
+            }
+            catch (SocketException e)
+            {
+                Debug.LogError($"Failed to connect: {e.Message}");
+                server.StartServer();
             }
 
             yield return new WaitForSeconds(2f);
         }
     }
 
-    void ConnectToServer(string address, int port)
+    private void Disconnect()
     {
-        if (client != null && client.Connected)
+        isConnected = false;
+
+        if (stream != null)
         {
-            Debug.Log("Already connected.");
-            return;
+            stream.Close();
+            stream = null;
         }
 
-        client = new TcpClient();
-        try
+        if (tcpClient != null)
         {
-            client.Connect(address, port);
-            isConnected = true;
-            Debug.Log("Connected to server!");
-
-//            SpawnPlayer(new Vector2(0, 0));
-        }
-        catch (SocketException e)
-        {
-            Debug.LogError($"Failed to connect: {e.Message}");
-        }
-    }
-
-    private void Update()
-    {
-        if (isConnected && client.Available > 0)
-        {
-            byte[] buffer = new byte[1024];
-            int bytesRead = client.GetStream().Read(buffer, 0, buffer.Length);
-
-            string message = Encoding.UTF8.GetString(buffer, 0, bytesRead);
-            HandleMessage(message);
-        }
-    }
-
-    void HandleMessage(string message)
-    {
-        if (message.StartsWith("SPAWN"))
-        {
-            string[] data = message.Substring(6).Split(',');
-            float x = float.Parse(data[0]);
-            float y = float.Parse(data[1]);
-
-            Vector2 spawnPosition = new Vector2(x, y);
-            SpawnPlayer(spawnPosition);
-        }
-    }
-
-    void SpawnPlayer(Vector2 position)
-    {
-        GameObject player = Instantiate(playerPrefab, position, Quaternion.identity);
-        PlayerController playerController = player.GetComponent<PlayerController>();
-        if (playerController != null)
-        {
-            // Assign unique player properties if necessary
-        }
-    }
-
-    public void SendMessageToServer(string message)
-    {
-        if (isConnected)
-        {
-            byte[] data = Encoding.UTF8.GetBytes(message);
-            client.GetStream().Write(data, 0, data.Length);
+            tcpClient.Close();
+            tcpClient = null;
         }
     }
 }

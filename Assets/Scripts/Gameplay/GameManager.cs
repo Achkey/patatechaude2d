@@ -39,7 +39,7 @@ public class GameManager : MonoBehaviour
             {
                 bombController.SetBombHolder(newHolder);
 
-                server.BroadcastToAll($"BOMB_UPDATE:{newHolder.playerID}");
+                server.SendMessageToAllClients($"BOMB_UPDATE:{newHolder.playerID}");
             }
         }
         else if (client != null)

@@ -1,58 +1,59 @@
+using System;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using UnityEngine;
-using System.Threading;
 
 public class Server : MonoBehaviour
 {
-    public static Server Instance;
+    public static Server Instance { get; private set; }
 
-    private TcpListener server;
-    private List<TcpClient> clients = new List<TcpClient>();
-    private Dictionary<TcpClient, GameObject> connectedPlayers = new Dictionary<TcpClient, GameObject>();
+    private TcpListener tcpServer;
+    private ConcurrentBag<TcpClient> clients = new ConcurrentBag<TcpClient>();
+    private Dictionary<int, Vector2> playerPositions = new Dictionary<int, Vector2>();
+    private Dictionary<TcpClient, int> clientToPlayerID = new Dictionary<TcpClient, int>();
+    private int nextPlayerID = 0;
 
     public int port = 7777;
     public GameObject playerPrefab;
 
-    private List<Vector2> spawnPositions = new List<Vector2>
-    {
-        new Vector2(-5, 0),
-        new Vector2(5, 0),
-        new Vector2(0, 5),
-        new Vector2(0, -5)
-    };
-
     private void Awake()
     {
-        if (Instance == null) Instance = this;
-        else Destroy(gameObject);
+        if (Instance != null && Instance != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
+        
+        Instance = this;
+        DontDestroyOnLoad(gameObject);
     }
 
-    private void Start()
-    {
-        StartServer();
-    }
-
-    void StartServer()
+    public async void StartServer()
     {
         try
         {
-            if (server != null && server.Server.IsBound)
-            {
-                Debug.LogError("Server is already running!");
-                return;
-            }
-
-            server = new TcpListener(IPAddress.Any, port);
-            server.Start();
+            tcpServer = new TcpListener(IPAddress.Any, port);
+            tcpServer.Start();
             Debug.Log("Server started!");
-
-            System.Threading.Thread serverThread = new System.Threading.Thread(AcceptClients);
-            serverThread.IsBackground = true;
-            serverThread.Start();
+            
+            while (true)
+            {
+                try
+                {
+                    TcpClient client = await tcpServer.AcceptTcpClientAsync();
+                    Debug.Log($"New client connected: {client.Client.RemoteEndPoint}");
+                    clients.Add(client);
+                    SpawnAndAssignPlayer(client);
+                }
+                catch (ObjectDisposedException)
+                {
+                    Debug.Log("Server has been stopped.");
+                    break;
+                }
+            }
         }
         catch (SocketException ex)
         {
@@ -61,112 +62,100 @@ public class Server : MonoBehaviour
     }
 
 
-    void AcceptClients()
+    private void OnApplicationQuit()
     {
-        while (true)
-        {
-            TcpClient client = server.AcceptTcpClient();
-            lock (clients)
-            {
-                clients.Add(client);
-                Debug.Log($"Client connected! Total clients: {clients.Count}");
+        StopServer();
+    }
+    
 
-                StartCoroutine(AssignPlayerCoroutine(client));
+    void SpawnAndAssignPlayer(TcpClient client)
+    {
+        if (!clientToPlayerID.TryGetValue(client, out int playerID))
+        {
+            playerID = nextPlayerID++;
+            clientToPlayerID[client] = playerID;
+        }
+
+        Vector2 spawnPosition = new Vector2(
+            UnityEngine.Random.Range(-16, 16),
+            UnityEngine.Random.Range(-9, 9)
+        );
+        playerPositions[playerID] = spawnPosition;
+
+        SendMessageToClient(client, $"SPAWN:{playerID}:{spawnPosition.x},{spawnPosition.y}\n");
+        foreach (var player in playerPositions)
+        {
+            if (player.Key != playerID)
+            {
+                SendMessageToClient(client, $"PLAYER_JOINED:{player.Key}:{player.Value.x},{player.Value.y}\n");
             }
         }
     }
 
-    private IEnumerator AssignPlayerCoroutine(TcpClient client)
+    public void UpdatePlayerPosition(int playerID, Vector2 position)
     {
-        yield return null;
-
-        AssignPlayer(client);
-    }
-
-    void AssignPlayer(TcpClient client)
-    {
-        if (clients.Count <= spawnPositions.Count)
+        if (playerPositions.ContainsKey(playerID))
         {
-        Debug.log("AssignPlayer | <=");
-            Vector2 spawnPosition = spawnPositions[clients.Count - 1];
-            SpawnPlayerForClient(client, spawnPosition);
-        }
-        else
-        {
-        Debug.log("AssignPlayer | more than array pos = random");
-            Vector2 spawnPosition = new Vector2(
-                Random.Range(-8f, 8f),
-                Random.Range(-4.5f, 4.5f)
-            );
-            SpawnPlayerForClient(client, spawnPosition);
+            playerPositions[playerID] = position;
+            SendPlayerPositionUpdate(playerID);
         }
     }
-
-    void SpawnPlayerForClient(TcpClient client, Vector2 spawnPosition)
+    void SendPlayerPositionUpdate(int playerID)
     {
-        GameObject player = Instantiate(playerPrefab, spawnPosition, Quaternion.identity);
-        connectedPlayers[client] = player;
-
-        PlayerController playerController = player.GetComponent<PlayerController>();
-        if (playerController != null)
+        if (playerPositions.ContainsKey(playerID))
         {
-            playerController.playerID = connectedPlayers.Count;
-        }
-
-        SendMessageToClient(client, $"SPAWN:{spawnPosition.x},{spawnPosition.y}");
-        BroadcastToAll($"PLAYER_JOINED:{connectedPlayers.Count}");
-    }
-
-    void HandleMessage(string message, TcpClient client)
-    {
-        if (message.StartsWith("BOMB_HOLDER"))
-        {
-            string[] data = message.Split(':');
-            int newHolderID = int.Parse(data[1]);
-
-            if (connectedPlayers.TryGetValue(client, out GameObject playerObject))
-            {
-                PlayerController newHolder = playerObject.GetComponent<PlayerController>();
-                if (newHolder != null)
-                {
-                    GameManager.Instance.UpdateBombHolder(newHolder);
-                    Debug.Log($"Bomb holder updated to Player {newHolderID}");
-                }
-            }
+            Vector2 position = playerPositions[playerID];
+            string positionMessage = $"PLAYER_POSITION:{playerID}:{position.x},{position.y}\n";
+            SendMessageToAllClients(positionMessage);
         }
     }
-
 
     void SendMessageToClient(TcpClient client, string message)
     {
-        byte[] data = Encoding.UTF8.GetBytes(message);
-        client.GetStream().Write(data, 0, data.Length);
-    }
-
-    public void BroadcastToAll(string message)
-    {
-        byte[] data = System.Text.Encoding.UTF8.GetBytes(message);
-        lock (clients)
+        try
         {
-            foreach (var client in clients)
+            byte[] data = Encoding.UTF8.GetBytes(message);
+            client.GetStream().Write(data, 0, data.Length);
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"Error sending message to client: {ex.Message}");
+        }
+    }
+    public void SendMessageToAllClients(string message)
+    {
+        byte[] data = Encoding.UTF8.GetBytes(message);
+
+        foreach (var client in clients)
+        {
+            try
             {
-                client.GetStream().Write(data, 0, data.Length);
+                if (client.Connected)
+                {
+                    client.GetStream().Write(data, 0, data.Length);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Error broadcasting message to client: {ex.Message}");
             }
         }
     }
 
-
-    public bool IsServerReady()
+    public void StopServer()
     {
-        return server != null && server.Connected;
-    }
-
-    private void OnApplicationQuit()
-    {
-        if (server != null)
+        if (tcpServer != null)
         {
-            server.Stop();
-            Debug.Log("Server stopped.");
+            tcpServer.Stop();
+            tcpServer = null;
+            Debug.Log("Server stopped!");
         }
+
+        foreach (var client in clients)
+        {
+            client.Close();
+        }
+
+        clients.Clear();
     }
 }
